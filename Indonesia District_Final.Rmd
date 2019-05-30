@@ -1,0 +1,208 @@
+---
+title: "Exploring Indonesian District Data Using R"
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+# Setting libraries
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r setup}
+library(ExPanDaR)
+library(knitr)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(data.table)
+library(stargazer)
+options(scipen=999)
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+## Import Dataset for GRDP, Human Development Index and Life Expetancy
+
+```{r}
+library(readxl)
+IndonesiaDistrictGRDPData_V1 <- read_excel("IndonesiaDistrictGRDPData_V1.xlsx", 
+    col_types = c("text", "text", "text",
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric"))
+IndonesiaDistrictHDIData_V1 <- read_excel("IndonesiaDistrictHDIData_V1.xlsx", 
+    col_types = c("text", "text", "text",
+        "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric"))
+IndonesiaDistrictLEData_V1 <- read_excel("IndonesiaDistrictLEData_V1.xlsx", 
+    col_types = c("text", "text", "text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+
+IndonesiaDistrictGRDPData_V1
+IndonesiaDistrictHDIData_V1
+IndonesiaDistrictLEData_V1
+```
+
+##long to wide tranform for All dataset
+
+```{r}
+library(tidyr)
+longIndonesiaDistrictGRDPData <- gather(IndonesiaDistrictGRDPData_V1, Year, GRDP, -1:-3)
+longIndonesiaDistrictHDIData <- gather(IndonesiaDistrictHDIData_V1, Year, HDI, -1:-3)
+longIndonesiaDistrictLEData <- gather(IndonesiaDistrictLEData_V1, Year, LE, -1:-3)
+
+longIndonesiaDistrictGRDPData
+longIndonesiaDistrictHDIData
+longIndonesiaDistrictLEData
+```
+
+##Join All Database
+
+```{r}
+library(tidyr)
+JoinTwoDistrictData <- full_join(longIndonesiaDistrictGRDPData, longIndonesiaDistrictHDIData, by = c("Region", "RegencyCity", "District", "Year"))
+
+JoinAllDistrictData <- full_join(JoinTwoDistrictData, longIndonesiaDistrictLEData, by = c("Region", "RegencyCity", "District", "Year"))
+JoinAllDistrictData
+```
+## Checking Missing Value on Dataset
+
+```{r}
+prepare_missing_values_graph(JoinAllDistrictData, ts_id = "Year")
+```
+## Descriptive Tabel
+
+```{r}
+t1desc <- prepare_descriptive_table(JoinAllDistrictData)
+t1desc$kable_ret
+```
+## Extreme Observation Table (Where the highest and lowest Data are located)
+
+```{r}
+t1 <- prepare_ext_obs_table(JoinAllDistrictData, cs_id = "District", ts_id = "Year", var = "GRDP")
+t2 <- prepare_ext_obs_table(JoinAllDistrictData, cs_id = "District", ts_id = "Year", var = "HDI")
+t3 <- prepare_ext_obs_table(JoinAllDistrictData, cs_id = "District", ts_id = "Year", var = "LE")
+t1$kable_ret
+t2$kable_ret
+t3$kable_ret
+```
+## Trend Plot for All Variables
+
+```{r}
+graph1 <- prepare_trend_graph(JoinAllDistrictData, ts_id = "Year", "GRDP")
+graph2 <- prepare_trend_graph(JoinAllDistrictData, ts_id = "Year", "HDI")
+graph3 <- prepare_trend_graph(JoinAllDistrictData, ts_id = "Year", "LE")
+graph1$plot
+graph2$plot
+graph3$plot
+```
+structural break in 2014? Check!!!
+
+## Plot of Quantile Trend for All Variables
+
+```{r}
+graph1 <- prepare_quantile_trend_graph(JoinAllDistrictData, ts_id = "Year", quantiles = c(0.05, 0.25, 0.5, 0.75, 0.95), var = "GRDP")
+graph2 <- prepare_quantile_trend_graph(JoinAllDistrictData, ts_id = "Year", quantiles = c(0.05, 0.25, 0.5, 0.75, 0.95), var = "HDI")
+graph3 <- prepare_quantile_trend_graph(JoinAllDistrictData, ts_id = "Year", quantiles = c(0.05, 0.25, 0.5, 0.75, 0.95), var = "LE")
+graph1$plot
+graph2$plot
+graph3$plot
+```
+## Correlation Matrix
+
+```{r}
+t1corr<- prepare_correlation_table(JoinAllDistrictData, bold = 0.01, format="html")
+t1corr$kable_ret
+```
+## Correlation Graph
+
+```{r}
+graphcorrel <- prepare_correlation_graph(JoinAllDistrictData)
+```
+
+## Plot of initial period with the growth on particular period.
+## For GRDP
+```{r}
+Col2014<- filter(JoinAllDistrictData, Year == "2014") %>% 
+  select(District,Year, GRDP )
+Col2017<- filter(JoinAllDistrictData, Year == "2017") %>% 
+  select(District,Year, GRDP )
+Colgrowth <- bind_cols(Col2014, Col2017) %>% 
+  select(District, Year, GRDP2014=  GRDP , Year1, GRDP2017= GRDP1 ) %>% 
+mutate(growth_r = ((((GRDP2017/GRDP2014)^(1/4)))-1)*100)
+ggplot(data = Colgrowth) +  geom_point(mapping = aes(x = GRDP2014, y = growth_r))
+```
+Some districts experienced high economic growth due to commodity boom such as Sumbawa Barat (PT Newmont (Gold)) and also Banggai and Morowali (Nickel)
+
+## For HDI
+```{r}
+Col2014<- filter(JoinAllDistrictData, Year == "2014") %>% 
+  select(District,Year, HDI )
+Col2017<- filter(JoinAllDistrictData, Year == "2017") %>% 
+  select(District,Year, HDI )
+Colgrowth <- bind_cols(Col2014, Col2017) %>% 
+  select(District, Year, HDI2014=  HDI , Year1, HDI2017= HDI1 ) %>% 
+mutate(growth_r = ((((HDI2017/HDI2014)^(1/4)))-1)*100)
+ggplot(data = Colgrowth) +  geom_point(mapping = aes(x = HDI2014, y = growth_r))
+```
+## For Life Expectancy
+```{r}
+Col2014<- filter(JoinAllDistrictData, Year == "2014") %>% 
+  select(District,Year, LE )
+Col2017<- filter(JoinAllDistrictData, Year == "2017") %>% 
+  select(District,Year, LE )
+Colgrowth <- bind_cols(Col2014, Col2017) %>% 
+  select(District, Year, LE2014=  LE , Year1, LE2017= LE1 ) %>% 
+mutate(growth_r = ((((LE2017/LE2014)^(1/4)))-1)*100)
+ggplot(data = Colgrowth) +  geom_point(mapping = aes(x = LE2014, y = growth_r))
+```
+# Scatter Plot
+```{r}
+prepare_scatter_plot(JoinAllDistrictData, x="GRDP", y="LE", color="Region", loess = 1)
+```
+Note : higher life expetancy are dominated by the western part of Indonesia which consist of Java Bali, Sumatera. 
+
+
+```{r}
+JoinAllDistrictData2 <- JoinAllDistrictData
+JoinAllDistrictData2$Year <- as.numeric(as.character(JoinAllDistrictData2$Year))
+prepare_scatter_plot(JoinAllDistrictData2, x="Year", y="LE", color="Region", loess = 1)
+```
+Note : The figure also support that most of eastern region in Indonesia have life expetancy below the average.
+
+
+# Standad Regression
+Note : This estimation/regression is just for pratical purposes. The regression is not developed based on theoretical background due to the limitation of data availability.
+
+```{r}
+dvs <- rep("LE", 3)
+idvs <- list(c("GRDP"), 
+             c("HDI"), 
+             c("GRDP", "HDI")) 
+t1reg <- prepare_regression_table(JoinAllDistrictData, dvs, idvs)
+htmltools::HTML(t1reg$table)
+```
+
+```{r}
+clusters <- list("Region", "Region", "Region")
+t2reg <- prepare_regression_table(JoinAllDistrictData, dvs, idvs, clusters = clusters)
+htmltools::HTML(t2reg$table)
+```
